@@ -9,19 +9,27 @@ namespace Daika7ana\SmallestBox;
  */
 class Item extends Dimensional
 {
+    /** @var array<int, array{0: float, 1: float, 2: float}>|null */
+    private ?array $uniqueRotations = null;
+
     /**
-     * Returns all 6 axis-aligned rotations of this item.
+     * Returns all unique axis-aligned rotations of this item.
      * Each rotation is a [width, length, height] tuple.
+     * The result is cached after the first call.
      *
      * @return array<int, array{0: float, 1: float, 2: float}>
      */
     public function rotations(): array
     {
+        if ($this->uniqueRotations !== null) {
+            return $this->uniqueRotations;
+        }
+
         $w = $this->width();
         $l = $this->length();
         $h = $this->height();
 
-        return [
+        $rotations = [
             [$w, $l, $h],
             [$w, $h, $l],
             [$l, $w, $h],
@@ -29,5 +37,19 @@ class Item extends Dimensional
             [$h, $w, $l],
             [$h, $l, $w],
         ];
+
+        $seen = [];
+        $unique = [];
+        foreach ($rotations as $r) {
+            $key = $r[0] . ',' . $r[1] . ',' . $r[2];
+            if (!isset($seen[$key])) {
+                $seen[$key] = true;
+                $unique[] = $r;
+            }
+        }
+
+        $this->uniqueRotations = $unique;
+
+        return $unique;
     }
 }

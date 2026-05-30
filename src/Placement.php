@@ -26,29 +26,16 @@ class Placement
     }
 
     /**
-     * Attempt to place an item with the given dimensions inside the box.
+     * Attempt to place an item using pre-computed unique rotations inside the box.
      * Tries each free-space region and rotation.
      *
-     * @param array{0: float, 1: float, 2: float} $dims [width, length, height]
+     * @param array<int, array{0: float, 1: float, 2: float}> $rotations Unique rotations to try
      * @return bool true if placed successfully
      */
-    public function place(array $dims): bool
+    public function place(array $rotations): bool
     {
-        $uniqueRotations = $this->deduplicateRotations($dims);
-
-        // Sort spaces by bottom-left-front heuristic (smallest coordinates first)
-        usort($this->spaces, function (array $a, array $b): int {
-            if ($a[2] !== $b[2]) {
-                return $a[2] <=> $b[2]; // z first (height)
-            }
-            if ($a[1] !== $b[1]) {
-                return $a[1] <=> $b[1]; // then y (length)
-            }
-            return $a[0] <=> $b[0]; // then x (width)
-        });
-
         foreach ($this->spaces as $si => $space) {
-            foreach ($uniqueRotations as $rot) {
+            foreach ($rotations as $rot) {
                 if ($rot[0] <= $space[3] && $rot[1] <= $space[4] && $rot[2] <= $space[5]) {
                     $this->splitSpace($si, $rot[0], $rot[1], $rot[2]);
 
@@ -61,34 +48,63 @@ class Placement
     }
 
     /**
-     * Generate all unique rotations of the given dimensions, deduplicating the
-     * six permutations where any dimensions are equal.
-     *
-     * @param array{0: float, 1: float, 2: float} $dims [width, length, height]
-     * @return list<array{0: float, 1: float, 2: float}>
+     * Insert a space in sorted order using binary search.
+     * Spaces are sorted by z, then y, then x.
      */
-    private function deduplicateRotations(array $dims): array
+    private function insertSpace(float $x, float $y, float $z, float $w, float $l, float $h): void
     {
-        $rotations = [
-            $dims,
-            [$dims[0], $dims[2], $dims[1]],
-            [$dims[1], $dims[0], $dims[2]],
-            [$dims[1], $dims[2], $dims[0]],
-            [$dims[2], $dims[0], $dims[1]],
-            [$dims[2], $dims[1], $dims[0]],
-        ];
+        $space = [$x, $y, $z, $w, $l, $h];
 
-        $seen = [];
-        $unique = [];
-        foreach ($rotations as $r) {
-            $key = $r[0] . ',' . $r[1] . ',' . $r[2];
-            if (!isset($seen[$key])) {
-                $seen[$key] = true;
-                $unique[] = $r;
+        // Binary search for insertion point
+        $low = 0;
+        $high = count($this->spaces);
+        while ($low < $high) {
+            $mid = ($low + $high) >> 1;
+            $s = $this->spaces[$mid];
+            if ($z < $s[2] || ($z === $s[2] && ($y < $s[1] || ($y === $s[1] && $x < $s[0])))) {
+                $high = $mid;
+            } else {
+                $low = $mid + 1;
+            }
+        }
+        array_splice($this->spaces, $low, 0, [$space]);
+    }
+
+    /**
+     * Remove spaces that are fully contained within another space.
+     */
+    private function pruneSubsumedSpaces(): void
+    {
+        $count = count($this->spaces);
+        $keep = [];
+
+        for ($i = 0; $i < $count; $i++) {
+            $a = $this->spaces[$i];
+            $subsumed = false;
+
+            for ($j = 0; $j < $count; $j++) {
+                if ($i === $j) {
+                    continue;
+                }
+                $b = $this->spaces[$j];
+
+                // Check if $a is fully contained within $b
+                if ($a[0] >= $b[0] && $a[1] >= $b[1] && $a[2] >= $b[2]
+                    && $a[0] + $a[3] <= $b[0] + $b[3]
+                    && $a[1] + $a[4] <= $b[1] + $b[4]
+                    && $a[2] + $a[5] <= $b[2] + $b[5]
+                ) {
+                    $subsumed = true;
+                    break;
+                }
+            }
+
+            if (!$subsumed) {
+                $keep[] = $a;
             }
         }
 
-        return $unique;
+        $this->spaces = $keep;
     }
 
     /**
@@ -103,6 +119,7 @@ class Placement
     {
         $space = $this->spaces[$index];
         unset($this->spaces[$index]);
+        $this->spaces = array_values($this->spaces);
 
         $sx = $space[0];
         $sy = $space[1];
@@ -114,20 +131,21 @@ class Placement
         // Right slab: remaining width along x-axis
         $rw = $sw - $iw;
         if ($rw > self::EPSILON) {
-            $this->spaces[] = [$sx + $iw, $sy, $sz, $rw, $sl, $sh];
+            $this->insertSpace($sx + $iw, $sy, $sz, $rw, $sl, $sh);
         }
 
         // Front slab: remaining length along y-axis (only the width consumed by item)
         $fl = $sl - $il;
         if ($fl > self::EPSILON) {
-            $this->spaces[] = [$sx, $sy + $il, $sz, $iw, $fl, $sh];
+            $this->insertSpace($sx, $sy + $il, $sz, $iw, $fl, $sh);
         }
 
         // Top slab: remaining height along z-axis (only the width+length consumed)
         $th = $sh - $ih;
         if ($th > self::EPSILON) {
-            $this->spaces[] = [$sx, $sy, $sz + $ih, $iw, $il, $th];
+            $this->insertSpace($sx, $sy, $sz + $ih, $iw, $il, $th);
         }
 
+        $this->pruneSubsumedSpaces();
     }
 }

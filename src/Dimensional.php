@@ -17,6 +17,7 @@ abstract class Dimensional
     private float $width;
     private float $length;
     private float $height;
+    private ?float $cachedVolume = null;
 
     public function __construct(float $width, float $length, float $height)
     {
@@ -46,6 +47,6 @@ abstract class Dimensional
 
     public function volume(): float
     {
-        return $this->width * $this->length * $this->height;
+        return $this->cachedVolume ??= $this->width * $this->length * $this->height;
     }
 }

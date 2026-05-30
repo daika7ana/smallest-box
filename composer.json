@@ -29,6 +29,6 @@
     },
     "scripts": {
         "test": "phpunit --no-configuration tests/",
-        "pint": "pint --test"
+        "pint": "pint"
     }
 }

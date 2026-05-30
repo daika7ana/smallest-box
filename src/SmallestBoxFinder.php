@@ -106,18 +106,36 @@ class SmallestBoxFinder
 
         // Sort candidates by volume ascending
         usort($candidates, function (array $a, array $b): int {
-            return ($a[0] * $a[1] * $a[2]) <=> ($b[0] * $b[1] * $b[2]);
+            return $a[3] <=> $b[3];
         });
+
+        // Partition: try exact-volume candidates first
+        $totalVolumeRounded = round($totalVolume, 4);
+        $exactMatches = [];
+        $otherCandidates = [];
+        foreach ($candidates as $candidate) {
+            if (abs($candidate[3] - $totalVolumeRounded) < self::EPSILON) {
+                $exactMatches[] = $candidate;
+            } else {
+                $otherCandidates[] = $candidate;
+            }
+        }
+        $candidates = array_merge($exactMatches, $otherCandidates);
 
         $bestBox = null;
 
         foreach ($candidates as $candidate) {
-            if ($bestBox !== null && ($candidate[0] * $candidate[1] * $candidate[2]) >= $bestBox->volume()) {
+            if ($bestBox !== null && $candidate[3] >= $bestBox->volume()) {
                 break;
             }
 
             if ($this->canPack($items, $candidate[0], $candidate[1], $candidate[2])) {
                 $bestBox = new Box($candidate[0], $candidate[1], $candidate[2]);
+
+                // Exact volume match is optimal
+                if (abs($candidate[3] - $totalVolumeRounded) < self::EPSILON) {
+                    break;
+                }
             }
         }
 
@@ -137,10 +155,22 @@ class SmallestBoxFinder
      *
      * @param Item[] $items
      * @param float $totalVolume
-     * @return array<int, array{0: float, 1: float, 2: float}>
+     * @return array<int, array{0: float, 1: float, 2: float, 3: float}>
      */
     private function generateCandidates(array $items, float $totalVolume): array
     {
+        // Compute per-axis lower bounds for early pruning
+        $minDims = [];
+        foreach ($items as $item) {
+            $itemMinDim = PHP_FLOAT_MAX;
+            foreach ($item->rotations() as $rot) {
+                $minDim = min($rot[0], $rot[1], $rot[2]);
+                $itemMinDim = min($itemMinDim, $minDim);
+            }
+            $minDims[] = $itemMinDim;
+        }
+        rsort($minDims);
+
         // Collect all unique dimensions from all items
         $dims = [];
         foreach ($items as $item) {
@@ -157,7 +187,7 @@ class SmallestBoxFinder
         // Strategy 1: single-item rotation fills the box exactly
         foreach ($items as $item) {
             foreach ($item->rotations() as $rot) {
-                $this->addCandidate($candidates, $seen, $rot[0], $rot[1], $rot[2], $totalVolume);
+                $this->addCandidate($candidates, $seen, $rot[0], $rot[1], $rot[2], $totalVolume, $minDims);
             }
         }
 
@@ -166,16 +196,14 @@ class SmallestBoxFinder
         for ($i = 0; $i < $n; $i++) {
             for ($j = 0; $j < $n; $j++) {
                 for ($k = 0; $k < $n; $k++) {
-                    $this->addCandidate($candidates, $seen, $dims[$i], $dims[$j], $dims[$k], $totalVolume);
+                    $this->addCandidate($candidates, $seen, $dims[$i], $dims[$j], $dims[$k], $totalVolume, $minDims);
                 }
             }
         }
 
-        // Strategy 3: pairwise sums along each axis (items placed side by side).
-        // This strategy is O(m³) where m is the number of unique pair dimensions,
-        // which can grow quickly. Cap it to n ≤ 8 unique dimensions to keep
-        // the combinatorial explosion manageable while still covering common cases.
+        // Strategy 3: pairwise sums combined with single dimensions
         if ($n <= 8) {
+            // Full pairwise combinations for small dimension sets
             $pairDims = $dims;
             for ($i = 0; $i < $n; $i++) {
                 for ($j = $i; $j < $n; $j++) {
@@ -191,7 +219,27 @@ class SmallestBoxFinder
             for ($i = 0; $i < $pn; $i++) {
                 for ($j = 0; $j < $pn; $j++) {
                     for ($k = 0; $k < $pn; $k++) {
-                        $this->addCandidate($candidates, $seen, $pairDims[$i], $pairDims[$j], $pairDims[$k], $totalVolume);
+                        $this->addCandidate($candidates, $seen, $pairDims[$i], $pairDims[$j], $pairDims[$k], $totalVolume, $minDims);
+                    }
+                }
+            }
+        } else {
+            // For larger dimension sets, only combine pair sums with single dimensions
+            $pairDims = [];
+            for ($i = 0; $i < $n; $i++) {
+                for ($j = $i; $j < $n; $j++) {
+                    $pairDims[] = round($dims[$i] + $dims[$j], 4);
+                }
+            }
+            $pairDims = array_values(array_unique($pairDims));
+            sort($pairDims);
+
+            $pn = count($pairDims);
+            // pair × pair × single (reduced from pn³)
+            for ($i = 0; $i < $pn; $i++) {
+                for ($j = 0; $j < $pn; $j++) {
+                    for ($k = 0; $k < $n; $k++) {
+                        $this->addCandidate($candidates, $seen, $pairDims[$i], $pairDims[$j], $dims[$k], $totalVolume, $minDims);
                     }
                 }
             }
@@ -201,12 +249,22 @@ class SmallestBoxFinder
     }
 
     /**
-     * @param array<int, array{0: float, 1: float, 2: float}> $candidates
+     * @param array<int, array{0: float, 1: float, 2: float, 3: float}> $candidates
      * @param array<string, bool> $seen
+     * @param list<float> $minDims Item minimum dimensions sorted descending
      */
-    private function addCandidate(array &$candidates, array &$seen, float $w, float $l, float $h, float $totalVolume): void
+    private function addCandidate(array &$candidates, array &$seen, float $w, float $l, float $h, float $totalVolume, array $minDims): void
     {
-        if ($w * $l * $h < $totalVolume - self::EPSILON) {
+        $vol = $w * $l * $h;
+        if ($vol < $totalVolume - self::EPSILON) {
+            return;
+        }
+
+        // Per-axis feasibility: the largest candidate dimension must be
+        // at least as large as the largest item minimum dimension.
+        $candidateDims = [$w, $l, $h];
+        rsort($candidateDims);
+        if ($candidateDims[0] < $minDims[0] - self::EPSILON) {
             return;
         }
 
@@ -216,7 +274,7 @@ class SmallestBoxFinder
 
         if (!isset($seen[$key])) {
             $seen[$key] = true;
-            $candidates[] = $sorted;
+            $candidates[] = [$sorted[0], $sorted[1], $sorted[2], $vol];
         }
     }
 
@@ -228,10 +286,24 @@ class SmallestBoxFinder
      */
     private function canPack(array $items, float $boxW, float $boxL, float $boxH): bool
     {
+        // Quick feasibility check: verify each item fits in at least one rotation
+        foreach ($items as $item) {
+            $fits = false;
+            foreach ($item->rotations() as $rot) {
+                if ($rot[0] <= $boxW && $rot[1] <= $boxL && $rot[2] <= $boxH) {
+                    $fits = true;
+                    break;
+                }
+            }
+            if (!$fits) {
+                return false;
+            }
+        }
+
         $placement = new Placement($boxW, $boxL, $boxH);
 
         foreach ($items as $item) {
-            if (!$placement->place([$item->width(), $item->length(), $item->height()])) {
+            if (!$placement->place($item->rotations())) {
                 return false;
             }
         }
