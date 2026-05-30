@@ -40,9 +40,15 @@ class SmallestBoxFinder
     /** @var array<int, callable(Item, Item): int> */
     private array $customPackOrders = [];
 
+    /** @var array<int, callable(Item, Item): int>|null */
     private static ?array $baseSortOrders = null;
+
+    /** @var array<int, (callable(Item, Item): int)|null>|null */
     private static ?array $basePackOrders = null;
 
+    /**
+     * @return array<int, callable(Item, Item): int>
+     */
     private static function getBaseSortOrders(): array
     {
         return self::$baseSortOrders ??= [
@@ -53,6 +59,9 @@ class SmallestBoxFinder
         ];
     }
 
+    /**
+     * @return array<int, (callable(Item, Item): int)|null>
+     */
     private static function getBasePackOrders(): array
     {
         return self::$basePackOrders ??= [
@@ -210,10 +219,6 @@ class SmallestBoxFinder
         $bestBox = null;
 
         foreach ($candidates as $candidate) {
-            if ($bestBox !== null && $candidate[3] >= $bestBox->volume()) {
-                break;
-            }
-
             // Try each sort order
             foreach ($sortOrders as $sortFn) {
                 $sortedItems = $items;
@@ -223,11 +228,6 @@ class SmallestBoxFinder
                     $bestBox = new Box($candidate[0], $candidate[1], $candidate[2]);
                     break 2; // Found a match, break both loops
                 }
-            }
-
-            // Exact volume match is optimal
-            if ($bestBox !== null && abs($candidate[3] - $totalVolumeRounded) < self::EPSILON) {
-                break;
             }
         }
 
@@ -351,7 +351,7 @@ class SmallestBoxFinder
             sort($tripleDims);
 
             // Combine triple sums with single and pair dims
-            $allDims = array_unique(array_merge($dims, $pairDims ?? $dims, $tripleDims));
+            $allDims = array_unique(array_merge($dims, $pairDims, $tripleDims));
             $allDims = array_values($allDims);
             sort($allDims);
             $an = count($allDims);
@@ -411,6 +411,9 @@ class SmallestBoxFinder
         return new GuillotinePacker($w, $l, $h);
     }
 
+    /**
+     * @param Item[] $items
+     */
     private function canPack(array $items, float $boxW, float $boxL, float $boxH): bool
     {
         // Quick feasibility check: verify each item fits in at least one rotation

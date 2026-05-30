@@ -13,15 +13,8 @@ namespace Daika7ana\SmallestBox\Packing;
  *
  * @internal
  */
-class GuillotinePacker implements PackingStrategy
+class GuillotinePacker extends AbstractPacker
 {
-    use SpaceManagementTrait;
-
-    /** @var array<int, array{0: float, 1: float, 2: float, 3: float, 4: float, 5: float}> */
-    private array $spaces;
-
-    private const EPSILON = 0.001;
-
     public function __construct(float $boxWidth, float $boxLength, float $boxHeight)
     {
         $this->spaces = [
@@ -65,7 +58,7 @@ class GuillotinePacker implements PackingStrategy
             }
         }
 
-        if ($bestChoice !== null) {
+        if ($bestChoice !== null && $bestRot !== null) {
             $this->splitSpace($bestChoice, $bestRot[0], $bestRot[1], $bestRot[2]);
             return true;
         }

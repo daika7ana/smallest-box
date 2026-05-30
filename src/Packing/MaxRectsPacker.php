@@ -14,14 +14,8 @@ namespace Daika7ana\SmallestBox\Packing;
  *
  * @internal
  */
-class MaxRectsPacker implements PackingStrategy
+class MaxRectsPacker extends AbstractPacker
 {
-    use SpaceManagementTrait;
-
-    /** @var array<int, array{0: float, 1: float, 2: float, 3: float, 4: float, 5: float}> */
-    private array $spaces;
-
-    private const EPSILON = 0.001;
     private const AXIS_PERMS = [[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]];
 
     public function __construct(float $boxWidth, float $boxLength, float $boxHeight)
@@ -59,7 +53,7 @@ class MaxRectsPacker implements PackingStrategy
             }
         }
 
-        if ($bestChoice !== null) {
+        if ($bestChoice !== null && $bestRot !== null) {
             $this->splitSpaceMaxRects($bestChoice, $bestRot[0], $bestRot[1], $bestRot[2]);
             return true;
         }

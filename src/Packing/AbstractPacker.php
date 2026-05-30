@@ -5,20 +5,19 @@ declare(strict_types=1);
 namespace Daika7ana\SmallestBox\Packing;
 
 /**
- * Shared space management logic for bin-packing strategies.
+ * Base class for 3D bin packers that manage free-space regions.
  *
  * Provides common implementations for scoring placements, inserting spaces
  * in sorted order, pruning subsumed spaces, and merging adjacent spaces.
  *
- * Each using class MUST define a `private const EPSILON = 0.001;` constant
- * and a `$spaces` property with the same shape as documented below.
- *
  * @internal
  */
-trait SpaceManagementTrait
+abstract class AbstractPacker implements PackingStrategy
 {
-    /** @var float Comparison tolerance for floating-point equality */
-    private const EPSILON = 0.001;
+    protected const EPSILON = 0.001;
+
+    /** @var array<int, array{0: float, 1: float, 2: float, 3: float, 4: float, 5: float}> */
+    protected array $spaces;
 
     /**
      * Score a candidate (space, rotation) pair for best-fit placement.
@@ -27,7 +26,7 @@ trait SpaceManagementTrait
      * @param array{0: float, 1: float, 2: float} $rot
      * @return float Higher is better
      */
-    private function placementScore(array $space, array $rot): float
+    protected function placementScore(array $space, array $rot): float
     {
         // 1. Wall contact bonus: prefer spaces touching box walls
         $wallContact = 0.0;
@@ -77,7 +76,7 @@ trait SpaceManagementTrait
      * @param float $l Length (y-axis extent)
      * @param float $h Height (z-axis extent)
      */
-    private function insertSpace(float $x, float $y, float $z, float $w, float $l, float $h): void
+    protected function insertSpace(float $x, float $y, float $z, float $w, float $l, float $h): void
     {
         $space = [$x, $y, $z, $w, $l, $h];
 
@@ -99,7 +98,7 @@ trait SpaceManagementTrait
     /**
      * Remove spaces that are fully contained within another space.
      */
-    private function pruneSubsumedSpaces(): void
+    protected function pruneSubsumedSpaces(): void
     {
         $count = count($this->spaces);
         if ($count < 2) {
@@ -153,7 +152,7 @@ trait SpaceManagementTrait
      * Single-pass O(n²) approach: for each space, try to merge with all
      * subsequent spaces along X, Y, or Z axes.
      */
-    private function mergeAdjacentSpaces(): void
+    protected function mergeAdjacentSpaces(): void
     {
         $count = count($this->spaces);
         if ($count < 2) {

@@ -86,8 +86,12 @@ class ExtremePointPacker implements PackingStrategy
         }
 
         if ($bestPointIndex !== null && $bestRot !== null) {
-            [$px, $py, $pz] = $this->points[$bestPointIndex];
-            [$rw, $rl, $rh] = $bestRot;
+            $px = $this->points[$bestPointIndex][0];
+            $py = $this->points[$bestPointIndex][1];
+            $pz = $this->points[$bestPointIndex][2];
+            $rw = $bestRot[0];
+            $rl = $bestRot[1];
+            $rh = $bestRot[2];
 
             // Place the item
             $this->placed[] = [$px, $py, $pz, $rw, $rl, $rh];

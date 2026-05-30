@@ -1,0 +1,74 @@
+name: Support / Question
+description: Ask a usage question or request help with smallest-box
+title: "[Support]: "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for usage questions, integration help, or clarification requests.
+
+        For bugs, use the bug report template. For new capabilities, use the feature request template.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What do you need help with?
+      placeholder: Describe the problem, confusion, or usage question.
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to achieve?
+      description: Explain the packing scenario or workflow you are implementing.
+      placeholder: I am trying to pack these items into the smallest box...
+    validations:
+      required: true
+  - type: textarea
+    id: code-sample
+    attributes:
+      label: Current code
+      description: Paste the relevant code you are using, if applicable.
+      render: php
+  - type: input
+    id: package-version
+    attributes:
+      label: Package version
+      placeholder: e.g. 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: php-version
+    attributes:
+      label: PHP version
+      placeholder: e.g. 8.3.6
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Related area
+      options:
+        - Packing algorithm
+        - Candidate generation
+        - Item rotations
+        - Custom sort / pack orders
+        - Box or Item value objects
+        - Performance
+        - Documentation
+        - Testing
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you tried?
+      description: Include relevant docs, code changes, or approaches you already tried.
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add anything else that would help answer the question.

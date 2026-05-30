@@ -1,0 +1,10 @@
+parameters:
+    level: 8
+    phpVersion: 70400
+    paths:
+        - src
+    excludePaths:
+        - vendor
+        - tests
+    tmpDir: .phpstan.cache
+    treatPhpDocTypesAsCertain: false
