@@ -4,7 +4,7 @@
 
 `SmallestBoxFinder` solves the 3D bin packing problem: given a set of rectangular items, find the smallest axis-aligned box that can contain them. Items may be rotated into any of six orientations.
 
-Two packing algorithms are available via the `PackingStrategy` interface.
+Three packing algorithms are available via the `PackingStrategy` interface.
 
 ## Algorithm Steps
 
@@ -55,18 +55,36 @@ For each candidate box, the selected packing algorithm attempts to pack all item
 
 The key difference: GuillotinePacker always splits X→Y→Z, while MaxRectsPacker tries all 6 permutations (X→Y→Z, X→Z→Y, Y→X→Z, Y→Z→X, Z→X→Y, Z→Y→X) and picks the best. This preserves corner regions that guillotine splits lose, resulting in significantly better packing for diverse item sets.
 
+#### ExtremePointPacker
+
+1. Initialize a single extreme point at (0, 0, 0).
+2. For each item:
+   - For each extreme point (sorted by z, then y, then x):
+     - For each rotation: check if the item fits at that point (within bounds, no overlap).
+     - Score the placement using wall contact, contact with placed items, deep-bottom-left position, and box tightness.
+   - Place the item at the best-scoring (point, rotation) pair.
+   - Generate three new extreme points from the placed item's faces:
+     - Right face: (x + width, y, z)
+     - Front face: (x, y + length, z)
+     - Top face: (x, y, z + height)
+   - Remove points that are inside placed items or outside the box.
+   - Deduplicate nearby points (within EPSILON).
+3. If any item cannot be placed, the candidate is rejected.
+
+The ExtremePointPacker follows a simpler strategy than the other two: instead of tracking free-space cuboids, it only tracks corner points where new items can start. This makes it lightweight, though it may leave gaps that guillotine or max-rects strategies can fill.
+
 ### 4. Result
 
 The algorithm returns the first (smallest-volume) candidate box that successfully packs all items.
 
 ## Performance Characteristics
 
-| Aspect | GuillotinePacker | MaxRectsPacker |
-|--------|-----------------|----------------|
-| Efficiency | ~65% for diverse items | ~100% for diverse items |
-| Speed | Fast (3 splits per placement) | ~2-4x slower (6 split orderings per placement) |
-| Space tracking | Non-overlapping slabs | Overlapping cuboids with pruning |
-| Best for | Uniform items, speed-critical | Diverse items, best fit |
+| Aspect | GuillotinePacker | MaxRectsPacker | ExtremePointPacker |
+|--------|-----------------|----------------|--------------------|
+| Efficiency | ~65% for diverse items | ~100% for diverse items | ~50-60% for diverse items |
+| Speed | Fast (3 splits per placement) | ~2-4x slower (6 split orderings per placement) | Fast (point list management) |
+| Space tracking | Non-overlapping slabs | Overlapping cuboids with pruning | Extreme point cloud |
+| Best for | Uniform items, speed-critical | Diverse items, best fit | Simple heuristic, speed |
 
 ## Limitations
 

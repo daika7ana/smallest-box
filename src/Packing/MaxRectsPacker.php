@@ -16,10 +16,13 @@ namespace Daika7ana\SmallestBox\Packing;
  */
 class MaxRectsPacker implements PackingStrategy
 {
+    use SpaceManagementTrait;
+
     /** @var array<int, array{0: float, 1: float, 2: float, 3: float, 4: float, 5: float}> */
     private array $spaces;
 
     private const EPSILON = 0.001;
+    private const AXIS_PERMS = [[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]];
 
     public function __construct(float $boxWidth, float $boxLength, float $boxHeight)
     {
@@ -65,57 +68,13 @@ class MaxRectsPacker implements PackingStrategy
     }
 
     /**
-     * Score a candidate (space, rotation) pair for best-fit placement.
-     *
-     * @param array{0: float, 1: float, 2: float, 3: float, 4: float, 5: float} $space
-     * @param array{0: float, 1: float, 2: float} $rot
-     * @return float Higher is better
-     */
-    private function placementScore(array $space, array $rot): float
-    {
-        // Wall contact
-        $wallContact = 0.0;
-        if ($space[0] < self::EPSILON) {
-            $wallContact += 1.0;
-        }
-        if ($space[1] < self::EPSILON) {
-            $wallContact += 1.0;
-        }
-        if ($space[2] < self::EPSILON) {
-            $wallContact += 1.0;
-        }
-
-        // Tightness
-        $tightness = 0.0;
-        if (abs($space[3] - $rot[0]) < self::EPSILON) {
-            $tightness += 1.0;
-        }
-        if (abs($space[4] - $rot[1]) < self::EPSILON) {
-            $tightness += 1.0;
-        }
-        if (abs($space[5] - $rot[2]) < self::EPSILON) {
-            $tightness += 1.0;
-        }
-
-        // Position
-        $positionScore = -($space[0] + $space[1] + $space[2]);
-
-        // Waste
-        $waste = ($space[3] * $space[4] * $space[5]) - ($rot[0] * $rot[1] * $rot[2]);
-        $wasteScore = -$waste;
-
-        return $wallContact * 50.0 + $tightness * 30.0 + $positionScore * 0.1 + $wasteScore * 0.01;
-    }
-
-    /**
      * Split using maximal rectangles approach: try all 6 axis orderings
      * and pick the one that produces the best remaining spaces.
      */
     private function splitSpaceMaxRects(int $index, float $iw, float $il, float $ih): void
     {
         $space = $this->spaces[$index];
-        unset($this->spaces[$index]);
-        $this->spaces = array_values($this->spaces);
+        array_splice($this->spaces, $index, 1);
 
         $sx = $space[0];
         $sy = $space[1];
@@ -124,20 +83,15 @@ class MaxRectsPacker implements PackingStrategy
         $sl = $space[4];
         $sh = $space[5];
 
-        // All 6 axis orderings for splitting
-        $orderings = [
-            [$iw, $il, $ih],  // X→Y→Z
-            [$iw, $ih, $il],  // X→Z→Y
-            [$il, $iw, $ih],  // Y→X→Z
-            [$il, $ih, $iw],  // Y→Z→X
-            [$ih, $iw, $il],  // Z→X→Y
-            [$ih, $il, $iw],  // Z→Y→X
-        ];
+        $dims = [$iw, $il, $ih];
 
         $bestScore = -PHP_FLOAT_MAX;
         $bestSplits = [];
 
-        foreach ($orderings as [$a, $b, $c]) {
+        foreach (self::AXIS_PERMS as [$ai, $bi, $ci]) {
+            $a = $dims[$ai];
+            $b = $dims[$bi];
+            $c = $dims[$ci];
             $splits = [];
 
             // First cut along X
@@ -199,111 +153,5 @@ class MaxRectsPacker implements PackingStrategy
             }
         }
         return $score;
-    }
-
-    /**
-     * Insert a space in sorted order using binary search.
-     * Spaces are sorted by z, then y, then x.
-     */
-    private function insertSpace(float $x, float $y, float $z, float $w, float $l, float $h): void
-    {
-        $space = [$x, $y, $z, $w, $l, $h];
-        $low = 0;
-        $high = count($this->spaces);
-        while ($low < $high) {
-            $mid = ($low + $high) >> 1;
-            $s = $this->spaces[$mid];
-            if ($z < $s[2] || ($z === $s[2] && ($y < $s[1] || ($y === $s[1] && $x < $s[0])))) {
-                $high = $mid;
-            } else {
-                $low = $mid + 1;
-            }
-        }
-        array_splice($this->spaces, $low, 0, [$space]);
-    }
-
-    /**
-     * Remove spaces that are fully contained within another space.
-     */
-    private function pruneSubsumedSpaces(): void
-    {
-        $count = count($this->spaces);
-        $keep = [];
-        for ($i = 0; $i < $count; $i++) {
-            $a = $this->spaces[$i];
-            $subsumed = false;
-            for ($j = 0; $j < $count; $j++) {
-                if ($i === $j) {
-                    continue;
-                }
-                $b = $this->spaces[$j];
-                if ($a[0] >= $b[0] && $a[1] >= $b[1] && $a[2] >= $b[2]
-                    && $a[0] + $a[3] <= $b[0] + $b[3]
-                    && $a[1] + $a[4] <= $b[1] + $b[4]
-                    && $a[2] + $a[5] <= $b[2] + $b[5]
-                ) {
-                    $subsumed = true;
-                    break;
-                }
-            }
-            if (!$subsumed) {
-                $keep[] = $a;
-            }
-        }
-        $this->spaces = $keep;
-    }
-
-    /**
-     * Merge adjacent spaces that share a face and have matching cross-sections.
-     */
-    private function mergeAdjacentSpaces(): void
-    {
-        $merged = true;
-        while ($merged) {
-            $merged = false;
-            $count = count($this->spaces);
-            for ($i = 0; $i < $count && !$merged; $i++) {
-                for ($j = $i + 1; $j < $count && !$merged; $j++) {
-                    $a = $this->spaces[$i];
-                    $b = $this->spaces[$j];
-                    if (abs($a[1] - $b[1]) < self::EPSILON
-                        && abs($a[2] - $b[2]) < self::EPSILON
-                        && abs($a[4] - $b[4]) < self::EPSILON
-                        && abs($a[5] - $b[5]) < self::EPSILON
-                        && abs(($a[0] + $a[3]) - $b[0]) < self::EPSILON
-                    ) {
-                        $this->spaces[$i] = [$a[0], $a[1], $a[2], $a[3] + $b[3], $a[4], $a[5]];
-                        unset($this->spaces[$j]);
-                        $this->spaces = array_values($this->spaces);
-                        $merged = true;
-                        continue;
-                    }
-                    if (abs($a[0] - $b[0]) < self::EPSILON
-                        && abs($a[2] - $b[2]) < self::EPSILON
-                        && abs($a[3] - $b[3]) < self::EPSILON
-                        && abs($a[5] - $b[5]) < self::EPSILON
-                        && abs(($a[1] + $a[4]) - $b[1]) < self::EPSILON
-                    ) {
-                        $this->spaces[$i] = [$a[0], $a[1], $a[2], $a[3], $a[4] + $b[4], $a[5]];
-                        unset($this->spaces[$j]);
-                        $this->spaces = array_values($this->spaces);
-                        $merged = true;
-                        continue;
-                    }
-                    if (abs($a[0] - $b[0]) < self::EPSILON
-                        && abs($a[1] - $b[1]) < self::EPSILON
-                        && abs($a[3] - $b[3]) < self::EPSILON
-                        && abs($a[4] - $b[4]) < self::EPSILON
-                        && abs(($a[2] + $a[5]) - $b[2]) < self::EPSILON
-                    ) {
-                        $this->spaces[$i] = [$a[0], $a[1], $a[2], $a[3], $a[4], $a[5] + $b[5]];
-                        unset($this->spaces[$j]);
-                        $this->spaces = array_values($this->spaces);
-                        $merged = true;
-                        continue;
-                    }
-                }
-            }
-        }
     }
 }

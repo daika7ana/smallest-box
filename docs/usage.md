@@ -105,12 +105,13 @@ $box = $finder->find($items); // Uses passed items, not internal collection
 
 ## Packing Algorithms
 
-Two packing algorithms are available:
+Three packing algorithms are available:
 
 | Algorithm | Efficiency | Speed | Best For |
 |-----------|-----------|-------|----------|
 | `ALGO_GUILLOTINE` (default) | ~63% | Fast | Uniform items, speed-critical |
 | `ALGO_MAXRECTS` | ~100% | Slower | Diverse items, best fit |
+| `ALGO_EXTREMEPOINT` | ~50-60% | Fast | Simple heuristic, speed |
 
 ### Using MaxRects
 
@@ -126,6 +127,61 @@ $box = $finder->find($items);
 ```
 
 The MaxRects algorithm tries all 6 axis orderings when splitting free space, preserving corner regions that guillotine splits lose. This results in significantly better packing for diverse item sets.
+
+### Using ExtremePoint
+
+```php
+// Via constructor
+$finder = new SmallestBoxFinder(SmallestBoxFinder::ALGO_EXTREMEPOINT);
+$box = $finder->find($items);
+
+// Via setter
+$finder = new SmallestBoxFinder();
+$finder->setAlgorithm(SmallestBoxFinder::ALGO_EXTREMEPOINT);
+$box = $finder->find($items);
+```
+
+The ExtremePoint algorithm maintains a list of corner points where items can be placed, rather than tracking free-space cuboids. After each placement, it generates new points from the item's faces and removes invalid points. This simple heuristic is fast but may leave gaps that more sophisticated algorithms can fill.
+
+## Custom Sort & Pack Orders
+
+You can add custom sort orders and pack orders to fine-tune packing behavior for your specific use case.
+
+### Custom Sort Orders
+
+Sort orders control the order in which candidate box sizes are tested with different item orderings:
+
+```php
+$finder = new SmallestBoxFinder();
+
+// Sort items by height ascending (build layers from bottom up)
+$finder->addSortOrder(function (Item $a, Item $b): int {
+    return $a->height() <=> $b->height();
+});
+
+// Sort items by footprint descending (largest base first)
+$finder->addSortOrder(function (Item $a, Item $b): int {
+    return ($b->width() * $b->length()) <=> ($a->width() * $a->length());
+});
+```
+
+### Custom Pack Orders
+
+Pack orders control the order in which items are fed to the packer when testing a candidate box:
+
+```php
+// Pack widest items first
+$finder->addPackOrder(function (Item $a, Item $b): int {
+    return $b->width() <=> $a->width();
+});
+
+// Pack tallest items first
+$finder->addPackOrder(function (Item $a, Item $b): int {
+    return $b->height() <=> $a->height();
+});
+```
+
+Custom orders are tried after the built-in ones. Both methods support fluent chaining.
 
 ## Performance Notes
 

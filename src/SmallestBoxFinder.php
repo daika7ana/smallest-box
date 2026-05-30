@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Daika7ana\SmallestBox;
 
+use Daika7ana\SmallestBox\Packing\ExtremePointPacker;
 use Daika7ana\SmallestBox\Packing\GuillotinePacker;
 use Daika7ana\SmallestBox\Packing\MaxRectsPacker;
 use Daika7ana\SmallestBox\Packing\PackingStrategy;
@@ -24,6 +25,7 @@ class SmallestBoxFinder
 {
     public const ALGO_GUILLOTINE = 'guillotine';
     public const ALGO_MAXRECTS = 'maxrects';
+    public const ALGO_EXTREMEPOINT = 'extremepoint';
 
     private const EPSILON = 0.001;
 
@@ -32,8 +34,35 @@ class SmallestBoxFinder
 
     private string $algorithm;
 
+    /** @var array<int, callable(Item, Item): int> */
+    private array $customSortOrders = [];
+
+    /** @var array<int, callable(Item, Item): int> */
+    private array $customPackOrders = [];
+
+    private static ?array $baseSortOrders = null;
+    private static ?array $basePackOrders = null;
+
+    private static function getBaseSortOrders(): array
+    {
+        return self::$baseSortOrders ??= [
+            fn(Item $a, Item $b): int => $b->volume() <=> $a->volume(),
+            fn(Item $a, Item $b): int => $a->height() <=> $b->height(),
+            fn(Item $a, Item $b): int => $a->volume() <=> $b->volume(),
+            fn(Item $a, Item $b): int => $b->width() <=> $a->width(),
+        ];
+    }
+
+    private static function getBasePackOrders(): array
+    {
+        return self::$basePackOrders ??= [
+            null,
+            fn(Item $a, Item $b): int => $a->volume() <=> $b->volume(),
+        ];
+    }
+
     /**
-     * @param string $algorithm Packing algorithm to use (ALGO_GUILLOTINE or ALGO_MAXRECTS)
+     * @param string $algorithm Packing algorithm to use (ALGO_GUILLOTINE, ALGO_MAXRECTS, or ALGO_EXTREMEPOINT)
      */
     public function __construct(string $algorithm = self::ALGO_GUILLOTINE)
     {
@@ -43,7 +72,7 @@ class SmallestBoxFinder
     /**
      * Set the packing algorithm.
      *
-     * @param string $algorithm Packing algorithm to use (ALGO_GUILLOTINE or ALGO_MAXRECTS)
+     * @param string $algorithm Packing algorithm to use (ALGO_GUILLOTINE, ALGO_MAXRECTS, or ALGO_EXTREMEPOINT)
      */
     public function setAlgorithm(string $algorithm): self
     {
@@ -102,6 +131,32 @@ class SmallestBoxFinder
     }
 
     /**
+     * Add a custom sort order to try when packing items.
+     * The callable receives two Items and returns an int comparison result.
+     *
+     * @param callable(Item, Item): int $comparator
+     * @return self
+     */
+    public function addSortOrder(callable $comparator): self
+    {
+        $this->customSortOrders[] = $comparator;
+        return $this;
+    }
+
+    /**
+     * Add a custom pack order to try when packing items into a candidate box.
+     * The callable receives two Items and returns an int comparison result.
+     *
+     * @param callable(Item, Item): int $comparator
+     * @return self
+     */
+    public function addPackOrder(callable $comparator): self
+    {
+        $this->customPackOrders[] = $comparator;
+        return $this;
+    }
+
+    /**
      * Find the smallest box that fits the items.
      *
      * If $items is provided, uses those items.
@@ -144,55 +199,13 @@ class SmallestBoxFinder
         $candidates = array_merge($exactMatches, $otherCandidates);
 
         // Define sort orders to try for packing
-        $sortOrders = [
-            // Volume descending (largest first)
-            function (Item $a, Item $b): int {
-                return $b->volume() <=> $a->volume();
-            },
-            // Max dimension descending
-            function (Item $a, Item $b): int {
-                return max($b->width(), $b->length(), $b->height())
-                    <=> max($a->width(), $a->length(), $a->height());
-            },
-            // Width descending
-            function (Item $a, Item $b): int {
-                return $b->width() <=> $a->width();
-            },
-            // Length descending
-            function (Item $a, Item $b): int {
-                return $b->length() <=> $a->length();
-            },
-            // Height descending
-            function (Item $a, Item $b): int {
-                return $b->height() <=> $a->height();
-            },
-            // Footprint descending (width * length)
-            function (Item $a, Item $b): int {
-                return ($b->width() * $b->length()) <=> ($a->width() * $a->length());
-            },
-            // Surface area descending — hard-to-place items first
-            function (Item $a, Item $b): int {
-                $saA = 2 * ($a->width() * $a->length() + $a->width() * $a->height() + $a->length() * $a->height());
-                $saB = 2 * ($b->width() * $b->length() + $b->width() * $b->height() + $b->length() * $b->height());
-                return $saB <=> $saA;
-            },
-            // Volume ascending (smallest first)
-            function (Item $a, Item $b): int {
-                return $a->volume() <=> $b->volume();
-            },
-            // Width ascending
-            function (Item $a, Item $b): int {
-                return $a->width() <=> $b->width();
-            },
-            // Length ascending
-            function (Item $a, Item $b): int {
-                return $a->length() <=> $b->length();
-            },
-            // Height ascending
-            function (Item $a, Item $b): int {
-                return $a->height() <=> $b->height();
-            },
-        ];
+        // Keep a focused set: the most effective orderings cover the vast majority of cases
+        $sortOrders = self::getBaseSortOrders();
+
+        // Append user-defined sort orders
+        foreach ($this->customSortOrders as $custom) {
+            $sortOrders[] = $custom;
+        }
 
         $bestBox = null;
 
@@ -392,6 +405,9 @@ class SmallestBoxFinder
         if ($this->algorithm === self::ALGO_MAXRECTS) {
             return new MaxRectsPacker($w, $l, $h);
         }
+        if ($this->algorithm === self::ALGO_EXTREMEPOINT) {
+            return new ExtremePointPacker($w, $l, $h);
+        }
         return new GuillotinePacker($w, $l, $h);
     }
 
@@ -412,19 +428,13 @@ class SmallestBoxFinder
         }
 
         // Try different item orderings inside the packer
-        $packOrders = [
-            null, // use items as-is (already sorted by caller)
-            function (Item $a, Item $b): int {
-                return $a->volume() <=> $b->volume();
-            },
-            function (Item $a, Item $b): int {
-                return max($a->width(), $a->length(), $a->height())
-                    <=> max($b->width(), $b->length(), $b->height());
-            },
-            function (Item $a, Item $b): int {
-                return ($a->width() * $a->length()) <=> ($b->width() * $b->length());
-            },
-        ];
+        // Keep a focused set: caller already provides a good ordering
+        $packOrders = self::getBasePackOrders();
+
+        // Append user-defined pack orders
+        foreach ($this->customPackOrders as $custom) {
+            $packOrders[] = $custom;
+        }
 
         foreach ($packOrders as $sortFn) {
             $attemptItems = $items;

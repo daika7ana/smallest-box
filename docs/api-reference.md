@@ -71,6 +71,7 @@ Main entry point. Finds the smallest box that fits a set of items.
 
 - `SmallestBoxFinder::ALGO_GUILLOTINE` — Guillotine split algorithm (default). Fast, ~63% efficiency for diverse items.
 - `SmallestBoxFinder::ALGO_MAXRECTS` — Maximal rectangles algorithm. Slower, ~100% efficiency for diverse items.
+- `SmallestBoxFinder::ALGO_EXTREMEPOINT` — Extreme point (corner placement) algorithm. Simple corner-based placement, useful as an alternative heuristic.
 
 ### `new SmallestBoxFinder(string $algorithm = self::ALGO_GUILLOTINE)`
 
@@ -97,6 +98,14 @@ Returns all items in the internal collection.
 ### `SmallestBoxFinder::clear(): self`
 
 Removes all items from the internal collection. Returns `$this` for fluent chaining.
+
+### `SmallestBoxFinder::addSortOrder(callable $comparator): self`
+
+Adds a custom sort order to try when packing items. The callable receives two `Item` objects and returns an int comparison result (like `usort`). Custom orders are tried after the built-in ones. Returns `$this` for fluent chaining.
+
+### `SmallestBoxFinder::addPackOrder(callable $comparator): self`
+
+Adds a custom pack order to try when packing items into a candidate box. The callable receives two `Item` objects and returns an int comparison result. Custom orders are tried after the built-in ones. Returns `$this` for fluent chaining.
 
 ### `SmallestBoxFinder::find(?array $items = null): Box`
 
@@ -153,6 +162,18 @@ Maximal rectangles 3D bin packer. Tries all 6 axis orderings when splitting free
 Implements `PackingStrategy`.
 
 ### `new MaxRectsPacker(float $boxWidth, float $boxLength, float $boxHeight)`
+
+Creates a packer for a box with the given dimensions.
+
+---
+
+## `Daika7ana\SmallestBox\Packing\ExtremePointPacker`
+
+Extreme point (corner placement) 3D bin packer. Maintains a list of extreme points — corner coordinates where items can be placed. For each item, evaluates all points and rotations, selecting the placement with the best score (deep-bottom-left, wall contact, and tight fit). After placement, generates new extreme points from the placed item's faces.
+
+Implements `PackingStrategy`.
+
+### `new ExtremePointPacker(float $boxWidth, float $boxLength, float $boxHeight)`
 
 Creates a packer for a box with the given dimensions.
 

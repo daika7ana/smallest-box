@@ -28,17 +28,7 @@ class Box extends Dimensional
      */
     public function compareTo(Box $other): int
     {
-        $diff = $this->volume() - $other->volume();
-
-        if ($diff < 0) {
-            return -1;
-        }
-
-        if ($diff > 0) {
-            return 1;
-        }
-
-        return 0;
+        return $this->volume() <=> $other->volume();
     }
 
     public function __toString(): string

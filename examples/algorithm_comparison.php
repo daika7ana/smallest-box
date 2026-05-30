@@ -27,20 +27,25 @@ $totalVolume = array_sum(array_map(fn(Item $i) => $i->volume(), $items));
 echo "10 items, total volume: " . round($totalVolume, 2) . "\n\n";
 
 $algorithms = [
-    'Guillotine' => SmallestBoxFinder::ALGO_GUILLOTINE,
-    'MaxRects'   => SmallestBoxFinder::ALGO_MAXRECTS,
+    'Guillotine'   => SmallestBoxFinder::ALGO_GUILLOTINE,
+    'MaxRects'     => SmallestBoxFinder::ALGO_MAXRECTS,
+    'ExtremePoint' => SmallestBoxFinder::ALGO_EXTREMEPOINT,
 ];
 
 foreach ($algorithms as $name => $algo) {
+    $start = hrtime(true);
     $finder = new SmallestBoxFinder($algo);
     $box = $finder->find($items);
+    $elapsed = (hrtime(true) - $start) / 1e6; // milliseconds
+
     $efficiency = ($totalVolume / $box->volume()) * 100;
 
     printf(
-        "%-12s: %s  (volume: %8.2f, efficiency: %.1f%%)\n",
+        "%-12s: %s  (volume: %8.2f, efficiency: %5.1f%%, time: %6.1fms)\n",
         $name,
         $box,
         $box->volume(),
         $efficiency,
+        $elapsed,
     );
 }
