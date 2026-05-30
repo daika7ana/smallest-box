@@ -6,6 +6,14 @@
 
 Calculate the smallest rectangular box (W x L x H) that fits a set of rectangular items, using axis-aligned 3D bin packing with rotation support.
 
+## Features
+
+- Finds the smallest box that fits all items via greedy 3D bin packing
+- Supports all six axis-aligned rotations for optimal fitting
+- Fluent API for building item lists incrementally
+- Immutable value objects for items and boxes
+- Zero dependencies
+
 ## Installation
 
 ```bash
@@ -16,8 +24,9 @@ Requires PHP >= 7.4.
 
 ## Quick Start
 
+### Pass items directly
+
 ```php
-use Daika7ana\SmallestBox\Box;
 use Daika7ana\SmallestBox\Item;
 use Daika7ana\SmallestBox\SmallestBoxFinder;
 
@@ -28,12 +37,23 @@ $items = [
 ];
 
 $finder = new SmallestBoxFinder();
-$box    = $finder->find($items);
+$box = $finder->find($items);
 
-echo $box;                   // e.g. "5.00 x 5.00 x 3.00"
-echo $box->volume();         // 75.0
-echo $box->width();          // 5.0
-echo $box->fits(3.0, 3.0, 2.0); // true
+echo $box;                       // "5.00 x 5.00 x 3.00"
+echo $box->volume();             // 75.0
+```
+
+### Build item list incrementally
+
+```php
+$finder = new SmallestBoxFinder();
+
+$finder
+    ->add(new Item(5.0, 3.0, 2.0))
+    ->add(new Item(3.0, 3.0, 3.0))
+    ->add(new Item(2.0, 2.0, 1.0));
+
+$box = $finder->find();
 ```
 
 ## How It Works
