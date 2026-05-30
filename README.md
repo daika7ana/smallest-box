@@ -10,7 +10,8 @@ Calculate the smallest rectangular box (W x L x H) that fits a set of rectangula
 
 - Finds the smallest box that fits all items via greedy 3D bin packing
 - Supports all six axis-aligned rotations for optimal fitting
-- Two packing algorithms: fast guillotine (default) and high-efficiency maximal rectangles
+- Three packing algorithms: guillotine (default), maximal rectangles, and extreme point
+- Custom sort orders and pack orders via closures
 - Fluent API for building item lists incrementally
 - Immutable value objects for items and boxes
 - Zero dependencies
@@ -65,6 +66,9 @@ $finder = new SmallestBoxFinder();
 
 // MaxRects (slower, ~100% efficiency for diverse items)
 $finder = new SmallestBoxFinder(SmallestBoxFinder::ALGO_MAXRECTS);
+
+// ExtremePoint (medium speed, ~75% efficiency for diverse items)
+$finder = new SmallestBoxFinder(SmallestBoxFinder::ALGO_EXTREMEPOINT);
 ```
 
 ## Algorithm Comparison
@@ -72,6 +76,7 @@ $finder = new SmallestBoxFinder(SmallestBoxFinder::ALGO_MAXRECTS);
 | Algorithm | Efficiency | Speed | Best For |
 |-----------|-----------|-------|----------|
 | `ALGO_GUILLOTINE` (default) | ~65% | Fast | Uniform items, speed-critical |
+| `ALGO_EXTREMEPOINT` | ~75% | Medium | Balanced efficiency and speed |
 | `ALGO_MAXRECTS` | ~100% | Slower | Diverse items, best fit |
 
 ## How It Works
@@ -81,13 +86,33 @@ $finder = new SmallestBoxFinder(SmallestBoxFinder::ALGO_MAXRECTS);
 3. **Test** each candidate with a packing algorithm that supports all six axis-aligned rotations.
 4. **Return** the smallest box that successfully fits all items.
 
+## Custom Sort & Pack Orders
+
+You can add custom orderings to fine-tune packing for your specific use case:
+
+```php
+$finder = new SmallestBoxFinder();
+
+// Add a custom sort order (tried after built-in ones)
+$finder->addSortOrder(function (Item $a, Item $b): int {
+    return $a->height() <=> $b->height();
+});
+
+// Add a custom pack order
+$finder->addPackOrder(function (Item $a, Item $b): int {
+    return $b->width() <=> $a->width();
+});
+
+$box = $finder->find($items);
+```
+
 ## Examples
 
 See the [examples/](examples/) directory for runnable scripts:
 
 - [basic_usage.php](examples/basic_usage.php) — Simple item creation and box finding
 - [fluent_api.php](examples/fluent_api.php) — Add/remove/clear fluent API
-- [algorithm_comparison.php](examples/algorithm_comparison.php) — Guillotine vs MaxRects comparison
+- [algorithm_comparison.php](examples/algorithm_comparison.php) — Guillotine vs MaxRects vs ExtremePoint comparison
 
 ## Documentation
 

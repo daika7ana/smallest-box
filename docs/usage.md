@@ -109,9 +109,9 @@ Three packing algorithms are available:
 
 | Algorithm | Efficiency | Speed | Best For |
 |-----------|-----------|-------|----------|
-| `ALGO_GUILLOTINE` (default) | ~63% | Fast | Uniform items, speed-critical |
+| `ALGO_GUILLOTINE` (default) | ~65% | Fast | Uniform items, speed-critical |
+| `ALGO_EXTREMEPOINT` | ~75% | Medium | Balanced efficiency and speed |
 | `ALGO_MAXRECTS` | ~100% | Slower | Diverse items, best fit |
-| `ALGO_EXTREMEPOINT` | ~50-60% | Fast | Simple heuristic, speed |
 
 ### Using MaxRects
 
