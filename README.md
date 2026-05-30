@@ -1,28 +1,61 @@
 # smallest-box
 
-[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
-[![PHP Version](https://img.shields.io/badge/php-%3E%3D7.4-777BB4.svg)](https://php.net)
-[![Packagist Version](https://img.shields.io/packagist/v/daika7ana/smallest-box)](https://packagist.org/packages/daika7ana/smallest-box)
+<div align="center">
 
-Calculate the smallest rectangular box (W x L x H) that fits a set of rectangular items, using axis-aligned 3D bin packing with rotation support.
+[![CI](https://github.com/daika7ana/smallest-box/actions/workflows/ci.yml/badge.svg)](https://github.com/daika7ana/smallest-box/actions/workflows/ci.yml)
+[![PHP 7.4+](https://img.shields.io/badge/PHP-7.4%2B-777BB4?style=flat-square&logo=php)](https://www.php.net/)
+[![PHPUnit](https://img.shields.io/badge/PHPUnit-9.x-0A7BBB?style=flat-square)](docs/testing.md)
+[![PHPStan](https://img.shields.io/badge/PHPStan-Level%208-blue?style=flat-square)](phpstan.neon)
+[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green?style=flat-square)](LICENSE)
+
+Calculate the smallest rectangular box that fits a set of rectangular items, using axis-aligned 3D bin packing with rotation support.
+
+</div>
+
+> Zero dependencies, fully typed, three packing algorithms, and rotation-aware candidate generation.
+
+## Table of Contents
+
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Packing Algorithms](#packing-algorithms)
+- [Custom Sort & Pack Orders](#custom-sort--pack-orders)
+- [Testing](#testing)
+- [Documentation](#documentation)
 
 ## Features
 
-- Finds the smallest box that fits all items via greedy 3D bin packing
-- Supports all six axis-aligned rotations for optimal fitting
-- Three packing algorithms: guillotine (default), maximal rectangles, and extreme point
-- Custom sort orders and pack orders via closures
-- Fluent API for building item lists incrementally
-- Immutable value objects for items and boxes
-- Zero dependencies
+### Core Strengths
+
+- ✅ **Smallest Box Finding** — Greedy 3D bin packing with rotation support
+- ✅ **Six Axis-Aligned Rotations** — Items tested in all orientations for optimal fit
+- ✅ **Three Packing Algorithms** — Guillotine, MaxRects, and ExtremePoint
+- ✅ **Custom Sort & Pack Orders** — Fine-tune item ordering via closures
+- ✅ **Fluent API** — Build item lists incrementally with `add()`, `remove()`, `clear()`
+- ✅ **Immutable Value Objects** — `Item` and `Box` with type-safe accessors
+- ✅ **Static Analysis with PHPStan** — Strict type checks across the codebase
+- ✅ **Zero Dependencies** — Only requires PHP 7.4+
+
+### Perfect For
+
+- 🎯 Logistics and shipping box optimisation
+- 🎯 Warehouse packing calculations
+- 🎯 3D layout and spatial planning
+- 🎯 Any scenario needing the smallest bounding box for rectangular items
+
+## Requirements
+
+- **PHP 7.4+**
 
 ## Installation
+
+### Via Composer
 
 ```bash
 composer require daika7ana/smallest-box
 ```
-
-Requires PHP >= 7.4.
 
 ## Quick Start
 
@@ -41,8 +74,8 @@ $items = [
 $finder = new SmallestBoxFinder();
 $box = $finder->find($items);
 
-echo $box;                       // "5.00 x 5.00 x 3.00"
-echo $box->volume();             // 75.0
+echo $box;           // "5.00 x 5.00 x 3.00"
+echo $box->volume(); // 75.0
 ```
 
 ### Build item list incrementally
@@ -71,7 +104,9 @@ $finder = new SmallestBoxFinder(SmallestBoxFinder::ALGO_MAXRECTS);
 $finder = new SmallestBoxFinder(SmallestBoxFinder::ALGO_EXTREMEPOINT);
 ```
 
-## Algorithm Comparison
+That's it! You've got the smallest box that fits all your items.
+
+## Packing Algorithms
 
 | Algorithm | Efficiency | Speed | Best For |
 |-----------|-----------|-------|----------|
@@ -79,26 +114,26 @@ $finder = new SmallestBoxFinder(SmallestBoxFinder::ALGO_EXTREMEPOINT);
 | `ALGO_EXTREMEPOINT` | ~75% | Medium | Balanced efficiency and speed |
 | `ALGO_MAXRECTS` | ~100% | Slower | Diverse items, best fit |
 
-## How It Works
+### How It Works
 
 1. **Sort** items by multiple heuristics (volume, dimensions, footprint).
 2. **Generate** candidate box dimensions from item dimension permutations and sums.
-3. **Test** each candidate with a packing algorithm that supports all six axis-aligned rotations.
+3. **Test** each candidate with the selected packing algorithm and all six rotations.
 4. **Return** the smallest box that successfully fits all items.
 
 ## Custom Sort & Pack Orders
 
-You can add custom orderings to fine-tune packing for your specific use case:
+Fine-tune packing behaviour for your specific use case:
 
 ```php
 $finder = new SmallestBoxFinder();
 
-// Add a custom sort order (tried after built-in ones)
+// Sort items by height ascending (build layers from bottom up)
 $finder->addSortOrder(function (Item $a, Item $b): int {
     return $a->height() <=> $b->height();
 });
 
-// Add a custom pack order
+// Pack widest items first
 $finder->addPackOrder(function (Item $a, Item $b): int {
     return $b->width() <=> $a->width();
 });
@@ -106,21 +141,58 @@ $finder->addPackOrder(function (Item $a, Item $b): int {
 $box = $finder->find($items);
 ```
 
-## Examples
+Custom orders are tried after the built-in ones. Both methods support fluent chaining.
 
-See the [examples/](examples/) directory for runnable scripts:
+## Testing
 
-- [basic_usage.php](examples/basic_usage.php) — Simple item creation and box finding
-- [fluent_api.php](examples/fluent_api.php) — Add/remove/clear fluent API
-- [algorithm_comparison.php](examples/algorithm_comparison.php) — Guillotine vs MaxRects vs ExtremePoint comparison
+### Run Static Analysis
+
+```bash
+composer stan
+```
+
+PHPStan is configured via `phpstan.neon` and analyses the `src/` directory.
+
+### Run Code Style Checks
+
+```bash
+composer pint
+```
+
+### Run Full Test Suite
+
+```bash
+composer test
+```
+
+### Run The Same Checks As CI
+
+```bash
+composer ci
+```
+
+Available Composer scripts:
+
+- `composer pint` — Check code style (Laravel Pint)
+- `composer stan` — Run static analysis (PHPStan)
+- `composer test` — Run the test suite (PHPUnit)
+- `composer ci` — Run all checks in sequence
 
 ## Documentation
 
-- [Installation Guide](docs/installation.md)
-- [Usage & Examples](docs/usage.md)
-- [API Reference](docs/api-reference.md)
-- [Algorithm Details](docs/algorithm.md)
+| Guide | Purpose |
+|-------|---------|
+| 📖 [Usage & Examples](docs/usage.md) | Working examples and patterns |
+| 🔧 [Installation](docs/installation.md) | Detailed setup instructions |
+| 📋 [API Reference](docs/api-reference.md) | Complete class and method reference |
+| ⚙️ [Algorithm Details](docs/algorithm.md) | How the packing algorithms work |
 
-## License
+---
 
-GPL-3.0-or-later. See [LICENSE](LICENSE) for details.
+<div align="center">
+
+Made with ❤️
+
+**Questions?** [Check the docs](docs/usage.md) or [open an issue](../../issues)
+
+</div>
