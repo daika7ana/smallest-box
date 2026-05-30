@@ -1,0 +1,34 @@
+{
+    "name": "daika7ana/smallest-box",
+    "version": "1.0.0",
+    "description": "Calculate the smallest rectangular box (W x L x H) that fits a set of rectangular items, using axis-aligned 3D bin packing with rotation support.",
+    "type": "library",
+    "license": "GPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "Dan-Radu Pana"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "Daika7ana\\SmallestBox\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Daika7ana\\SmallestBox\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "stable",
+    "require": {
+        "php": ">=7.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6",
+        "laravel/pint": "^1.29"
+    },
+    "scripts": {
+        "test": "phpunit --no-configuration tests/",
+        "pint": "pint --test"
+    }
+}
