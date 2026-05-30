@@ -67,9 +67,18 @@ Returns a formatted string like `"10.00 x 20.00 x 30.00"`.
 
 Main entry point. Finds the smallest box that fits a set of items.
 
-### `new SmallestBoxFinder()`
+### Constants
 
-Creates a finder instance with an empty internal collection.
+- `SmallestBoxFinder::ALGO_GUILLOTINE` — Guillotine split algorithm (default). Fast, ~63% efficiency for diverse items.
+- `SmallestBoxFinder::ALGO_MAXRECTS` — Maximal rectangles algorithm. Slower, ~100% efficiency for diverse items.
+
+### `new SmallestBoxFinder(string $algorithm = self::ALGO_GUILLOTINE)`
+
+Creates a finder instance with an empty internal collection. Optionally specify the packing algorithm.
+
+### `SmallestBoxFinder::setAlgorithm(string $algorithm): self`
+
+Sets the packing algorithm. Returns `$this` for fluent chaining.
 
 ### `SmallestBoxFinder::add(Item $item): self`
 
@@ -106,14 +115,45 @@ Throws:
 - `InvalidArgumentException` if items is empty.
 - `RuntimeException` if no box can fit all items.
 
----
-
 ## `Daika7ana\SmallestBox\Dimensional` (abstract class)
 
 Abstract base class providing shared dimensional behaviour (`$width`, `$length`, `$height`, constructor validation, dimension getters, `volume()`). Extended by both `Box` and `Item`.
 
 ---
 
-## `Daika7ana\SmallestBox\Placement` (internal)
+## `Daika7ana\SmallestBox\Packing\PackingStrategy` (interface)
 
-Internal helper class for greedy 3D bin packing. Not part of the public API.
+Interface for packing algorithm implementations.
+
+### `PackingStrategy::place(array $rotations): bool`
+
+Attempt to place an item with the given rotations inside the box.
+
+- `$rotations` — Array of `[width, length, height]` tuples (one per unique rotation).
+- Returns `true` if placed successfully, `false` if no space available.
+
+---
+
+## `Daika7ana\SmallestBox\Packing\GuillotinePacker`
+
+Guillotine 3D bin packer. Splits free space into three orthogonal slabs (right, front, top) after each placement. Fast but may leave fragmented free space.
+
+Implements `PackingStrategy`.
+
+### `new GuillotinePacker(float $boxWidth, float $boxLength, float $boxHeight)`
+
+Creates a packer for a box with the given dimensions.
+
+---
+
+## `Daika7ana\SmallestBox\Packing\MaxRectsPacker`
+
+Maximal rectangles 3D bin packer. Tries all 6 axis orderings when splitting free space, keeping the ordering that produces the best remaining cuboids. Slower but achieves significantly better packing efficiency for diverse item sets.
+
+Implements `PackingStrategy`.
+
+### `new MaxRectsPacker(float $boxWidth, float $boxLength, float $boxHeight)`
+
+Creates a packer for a box with the given dimensions.
+
+

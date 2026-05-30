@@ -25,6 +25,14 @@ Run the test suite:
 ./vendor/bin/phpunit
 ```
 
+Run the examples:
+
+```bash
+php examples/basic_usage.php
+php examples/fluent_api.php
+php examples/algorithm_comparison.php
+```
+
 ## Autoloading
 
 The package uses PSR-4 autoloading. The root namespace is `Daika7ana\SmallestBox\` mapped to the `src/` directory. No additional configuration is required when installed via Composer.

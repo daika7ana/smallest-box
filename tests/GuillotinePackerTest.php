@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Daika7ana\SmallestBox\Tests;
 
-use Daika7ana\SmallestBox\Placement;
+use Daika7ana\SmallestBox\Packing\GuillotinePacker;
 use PHPUnit\Framework\TestCase;
 
-class PlacementTest extends TestCase
+class GuillotinePackerTest extends TestCase
 {
     public function testSingleItemPlacement(): void
     {
-        $placement = new Placement(10.0, 10.0, 10.0);
+        $placement = new GuillotinePacker(10.0, 10.0, 10.0);
 
         // Cube: only 1 unique rotation
         $this->assertTrue($placement->place([[5.0, 5.0, 5.0]]));
@@ -19,7 +19,7 @@ class PlacementTest extends TestCase
 
     public function testMultipleItemsExactFit(): void
     {
-        $placement = new Placement(10.0, 10.0, 10.0);
+        $placement = new GuillotinePacker(10.0, 10.0, 10.0);
 
         // 10×10×5 has 2 equal dimensions → 3 unique rotations
         $this->assertTrue($placement->place([[10.0, 10.0, 5.0], [10.0, 5.0, 10.0], [5.0, 10.0, 10.0]]));
@@ -28,7 +28,7 @@ class PlacementTest extends TestCase
 
     public function testItemRejectionWhenSpaceExhausted(): void
     {
-        $placement = new Placement(5.0, 5.0, 5.0);
+        $placement = new GuillotinePacker(5.0, 5.0, 5.0);
 
         // Cube: only 1 unique rotation
         $this->assertTrue($placement->place([[5.0, 5.0, 5.0]]));
@@ -40,7 +40,7 @@ class PlacementTest extends TestCase
         // Box is 5 wide, 10 long, 5 tall.
         // Item [10, 5, 5] does not fit as-is (10 > 5 width),
         // but rotating to [5, 10, 5] fits exactly.
-        $placement = new Placement(5.0, 10.0, 5.0);
+        $placement = new GuillotinePacker(5.0, 10.0, 5.0);
 
         // 10×5×5 has 2 equal dimensions → 3 unique rotations
         $this->assertTrue($placement->place([[10.0, 5.0, 5.0], [5.0, 10.0, 5.0], [5.0, 5.0, 10.0]]));
@@ -48,7 +48,7 @@ class PlacementTest extends TestCase
 
     public function testSpaceSplittingCorrectness(): void
     {
-        $placement = new Placement(10.0, 10.0, 10.0);
+        $placement = new GuillotinePacker(10.0, 10.0, 10.0);
 
         // 6×10×10 has 2 equal dimensions → 3 unique rotations
         $this->assertTrue($placement->place([[6.0, 10.0, 10.0], [10.0, 6.0, 10.0], [10.0, 10.0, 6.0]]));

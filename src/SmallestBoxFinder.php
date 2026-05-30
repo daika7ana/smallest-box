@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Daika7ana\SmallestBox;
 
+use Daika7ana\SmallestBox\Packing\GuillotinePacker;
+use Daika7ana\SmallestBox\Packing\MaxRectsPacker;
+use Daika7ana\SmallestBox\Packing\PackingStrategy;
 use InvalidArgumentException;
 use OutOfRangeException;
 use RuntimeException;
@@ -19,10 +22,34 @@ use RuntimeException;
  */
 class SmallestBoxFinder
 {
+    public const ALGO_GUILLOTINE = 'guillotine';
+    public const ALGO_MAXRECTS = 'maxrects';
+
     private const EPSILON = 0.001;
 
     /** @var Item[] */
     private array $items = [];
+
+    private string $algorithm;
+
+    /**
+     * @param string $algorithm Packing algorithm to use (ALGO_GUILLOTINE or ALGO_MAXRECTS)
+     */
+    public function __construct(string $algorithm = self::ALGO_GUILLOTINE)
+    {
+        $this->algorithm = $algorithm;
+    }
+
+    /**
+     * Set the packing algorithm.
+     *
+     * @param string $algorithm Packing algorithm to use (ALGO_GUILLOTINE or ALGO_MAXRECTS)
+     */
+    public function setAlgorithm(string $algorithm): self
+    {
+        $this->algorithm = $algorithm;
+        return $this;
+    }
 
     /**
      * Add an item to the internal collection.
@@ -91,18 +118,12 @@ class SmallestBoxFinder
             throw new InvalidArgumentException('Items array must not be empty.');
         }
 
-        // Sort by volume descending (work on a copy to avoid mutating the input)
-        $sortedItems = $items;
-        usort($sortedItems, function (Item $a, Item $b): int {
-            return $b->volume() <=> $a->volume();
-        });
-
         $totalVolume = 0.0;
-        foreach ($sortedItems as $item) {
+        foreach ($items as $item) {
             $totalVolume += $item->volume();
         }
 
-        $candidates = $this->generateCandidates($sortedItems, $totalVolume);
+        $candidates = $this->generateCandidates($items, $totalVolume);
 
         // Sort candidates by volume ascending
         usort($candidates, function (array $a, array $b): int {
@@ -122,6 +143,57 @@ class SmallestBoxFinder
         }
         $candidates = array_merge($exactMatches, $otherCandidates);
 
+        // Define sort orders to try for packing
+        $sortOrders = [
+            // Volume descending (largest first)
+            function (Item $a, Item $b): int {
+                return $b->volume() <=> $a->volume();
+            },
+            // Max dimension descending
+            function (Item $a, Item $b): int {
+                return max($b->width(), $b->length(), $b->height())
+                    <=> max($a->width(), $a->length(), $a->height());
+            },
+            // Width descending
+            function (Item $a, Item $b): int {
+                return $b->width() <=> $a->width();
+            },
+            // Length descending
+            function (Item $a, Item $b): int {
+                return $b->length() <=> $a->length();
+            },
+            // Height descending
+            function (Item $a, Item $b): int {
+                return $b->height() <=> $a->height();
+            },
+            // Footprint descending (width * length)
+            function (Item $a, Item $b): int {
+                return ($b->width() * $b->length()) <=> ($a->width() * $a->length());
+            },
+            // Surface area descending — hard-to-place items first
+            function (Item $a, Item $b): int {
+                $saA = 2 * ($a->width() * $a->length() + $a->width() * $a->height() + $a->length() * $a->height());
+                $saB = 2 * ($b->width() * $b->length() + $b->width() * $b->height() + $b->length() * $b->height());
+                return $saB <=> $saA;
+            },
+            // Volume ascending (smallest first)
+            function (Item $a, Item $b): int {
+                return $a->volume() <=> $b->volume();
+            },
+            // Width ascending
+            function (Item $a, Item $b): int {
+                return $a->width() <=> $b->width();
+            },
+            // Length ascending
+            function (Item $a, Item $b): int {
+                return $a->length() <=> $b->length();
+            },
+            // Height ascending
+            function (Item $a, Item $b): int {
+                return $a->height() <=> $b->height();
+            },
+        ];
+
         $bestBox = null;
 
         foreach ($candidates as $candidate) {
@@ -129,20 +201,27 @@ class SmallestBoxFinder
                 break;
             }
 
-            if ($this->canPack($items, $candidate[0], $candidate[1], $candidate[2])) {
-                $bestBox = new Box($candidate[0], $candidate[1], $candidate[2]);
+            // Try each sort order
+            foreach ($sortOrders as $sortFn) {
+                $sortedItems = $items;
+                usort($sortedItems, $sortFn);
 
-                // Exact volume match is optimal
-                if (abs($candidate[3] - $totalVolumeRounded) < self::EPSILON) {
-                    break;
+                if ($this->canPack($sortedItems, $candidate[0], $candidate[1], $candidate[2])) {
+                    $bestBox = new Box($candidate[0], $candidate[1], $candidate[2]);
+                    break 2; // Found a match, break both loops
                 }
+            }
+
+            // Exact volume match is optimal
+            if ($bestBox !== null && abs($candidate[3] - $totalVolumeRounded) < self::EPSILON) {
+                break;
             }
         }
 
         if ($bestBox === null) {
             throw new RuntimeException(sprintf(
                 'Could not find a box that fits all %d items (total volume: %.4f).',
-                count($sortedItems),
+                count($items),
                 $totalVolume,
             ));
         }
@@ -245,6 +324,33 @@ class SmallestBoxFinder
             }
         }
 
+        // Strategy 4: triple sums (items placed end-to-end along one axis)
+        if ($n <= 6) {
+            $tripleDims = [];
+            for ($i = 0; $i < $n; $i++) {
+                for ($j = $i; $j < $n; $j++) {
+                    for ($k = $j; $k < $n; $k++) {
+                        $tripleDims[] = round($dims[$i] + $dims[$j] + $dims[$k], 4);
+                    }
+                }
+            }
+            $tripleDims = array_values(array_unique($tripleDims));
+            sort($tripleDims);
+
+            // Combine triple sums with single and pair dims
+            $allDims = array_unique(array_merge($dims, $pairDims ?? $dims, $tripleDims));
+            $allDims = array_values($allDims);
+            sort($allDims);
+            $an = count($allDims);
+            for ($i = 0; $i < $an; $i++) {
+                for ($j = 0; $j < $an; $j++) {
+                    for ($k = 0; $k < $an; $k++) {
+                        $this->addCandidate($candidates, $seen, $allDims[$i], $allDims[$j], $allDims[$k], $totalVolume, $minDims);
+                    }
+                }
+            }
+        }
+
         return $candidates;
     }
 
@@ -279,11 +385,16 @@ class SmallestBoxFinder
     }
 
     /**
-     * Attempt to greedily pack all items into a box of given dimensions.
-     *
-     * @param Item[] $items
-     * @return bool
+     * Create a packer instance based on the selected algorithm.
      */
+    private function createPacker(float $w, float $l, float $h): PackingStrategy
+    {
+        if ($this->algorithm === self::ALGO_MAXRECTS) {
+            return new MaxRectsPacker($w, $l, $h);
+        }
+        return new GuillotinePacker($w, $l, $h);
+    }
+
     private function canPack(array $items, float $boxW, float $boxL, float $boxH): bool
     {
         // Quick feasibility check: verify each item fits in at least one rotation
@@ -300,15 +411,43 @@ class SmallestBoxFinder
             }
         }
 
-        $placement = new Placement($boxW, $boxL, $boxH);
+        // Try different item orderings inside the packer
+        $packOrders = [
+            null, // use items as-is (already sorted by caller)
+            function (Item $a, Item $b): int {
+                return $a->volume() <=> $b->volume();
+            },
+            function (Item $a, Item $b): int {
+                return max($a->width(), $a->length(), $a->height())
+                    <=> max($b->width(), $b->length(), $b->height());
+            },
+            function (Item $a, Item $b): int {
+                return ($a->width() * $a->length()) <=> ($b->width() * $b->length());
+            },
+        ];
 
-        foreach ($items as $item) {
-            if (!$placement->place($item->rotations())) {
-                return false;
+        foreach ($packOrders as $sortFn) {
+            $attemptItems = $items;
+            if ($sortFn !== null) {
+                usort($attemptItems, $sortFn);
+            }
+
+            $placement = $this->createPacker($boxW, $boxL, $boxH);
+            $placed = true;
+
+            foreach ($attemptItems as $item) {
+                if (!$placement->place($item->rotations())) {
+                    $placed = false;
+                    break;
+                }
+            }
+
+            if ($placed) {
+                return true;
             }
         }
 
-        return true;
+        return false;
     }
 
 

@@ -119,11 +119,11 @@ class SmallestBoxFinderTest extends TestCase
             '/^Could not find a box that fits all \d+ items \(total volume: \d+\.\d{4}\)\.$/',
         );
 
-        // 10 identical cubes of 10×10×10: total volume is 10000,
-        // but the candidate generator's largest dimension pair sum is 20,
-        // giving a max candidate volume of 20×20×20 = 8000 < 10000,
+        // 30 identical cubes of 10×10×10: total volume is 30000,
+        // but the candidate generator's largest dimension sum is 30 (triple sum),
+        // giving a max candidate volume of 30×30×30 = 27000 < 30000,
         // so no candidate passes the volume filter → RuntimeException.
-        $items = array_fill(0, 10, new Item(10.0, 10.0, 10.0));
+        $items = array_fill(0, 30, new Item(10.0, 10.0, 10.0));
         $this->finder->find($items);
     }
 
@@ -216,5 +216,30 @@ class SmallestBoxFinderTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         $this->finder->find();
+    }
+
+    public function testMaxRectsAchievesHighEfficiency(): void
+    {
+        $items = [
+            new Item(18.2, 7.5, 3.1),
+            new Item(5.0, 5.0, 5.0),
+            new Item(12.0, 9.0, 2.0),
+            new Item(3.5, 3.5, 3.5),
+            new Item(7.8, 4.2, 6.0),
+            new Item(1.0, 1.0, 1.0),
+            new Item(10.5, 10.5, 1.5),
+            new Item(6.0, 6.0, 6.0),
+            new Item(14.0, 2.0, 2.0),
+            new Item(4.0, 4.0, 8.0),
+        ];
+
+        $totalVolume = array_sum(array_map(fn(Item $i) => $i->volume(), $items));
+
+        // MaxRects should find a box with very high efficiency
+        $finder = new SmallestBoxFinder(SmallestBoxFinder::ALGO_MAXRECTS);
+        $box = $finder->find($items);
+
+        $efficiency = $totalVolume / $box->volume();
+        $this->assertGreaterThanOrEqual(0.95, $efficiency, 'MaxRects should achieve at least 95% efficiency');
     }
 }

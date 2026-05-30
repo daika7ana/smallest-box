@@ -103,6 +103,30 @@ $box = $finder->find($items); // Uses passed items, not internal collection
 - If no box can fit all items, `find()` throws `RuntimeException`.
 - Creating a `Box` or `Item` with zero or negative dimensions throws `InvalidArgumentException`.
 
+## Packing Algorithms
+
+Two packing algorithms are available:
+
+| Algorithm | Efficiency | Speed | Best For |
+|-----------|-----------|-------|----------|
+| `ALGO_GUILLOTINE` (default) | ~63% | Fast | Uniform items, speed-critical |
+| `ALGO_MAXRECTS` | ~100% | Slower | Diverse items, best fit |
+
+### Using MaxRects
+
+```php
+// Via constructor
+$finder = new SmallestBoxFinder(SmallestBoxFinder::ALGO_MAXRECTS);
+$box = $finder->find($items);
+
+// Via setter
+$finder = new SmallestBoxFinder();
+$finder->setAlgorithm(SmallestBoxFinder::ALGO_MAXRECTS);
+$box = $finder->find($items);
+```
+
+The MaxRects algorithm tries all 6 axis orderings when splitting free space, preserving corner regions that guillotine splits lose. This results in significantly better packing for diverse item sets.
+
 ## Performance Notes
 
 The candidate generation grows combinatorially with the number of unique item dimensions. For most practical packing problems (tens of items with shared dimensions), performance is acceptable. For hundreds of items with many unique dimensions, consider pre-filtering or batching.

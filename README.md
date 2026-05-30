@@ -10,6 +10,7 @@ Calculate the smallest rectangular box (W x L x H) that fits a set of rectangula
 
 - Finds the smallest box that fits all items via greedy 3D bin packing
 - Supports all six axis-aligned rotations for optimal fitting
+- Two packing algorithms: fast guillotine (default) and high-efficiency maximal rectangles
 - Fluent API for building item lists incrementally
 - Immutable value objects for items and boxes
 - Zero dependencies
@@ -56,12 +57,37 @@ $finder
 $box = $finder->find();
 ```
 
+### Choose a packing algorithm
+
+```php
+// Default: guillotine (fast, ~65% efficiency for diverse items)
+$finder = new SmallestBoxFinder();
+
+// MaxRects (slower, ~100% efficiency for diverse items)
+$finder = new SmallestBoxFinder(SmallestBoxFinder::ALGO_MAXRECTS);
+```
+
+## Algorithm Comparison
+
+| Algorithm | Efficiency | Speed | Best For |
+|-----------|-----------|-------|----------|
+| `ALGO_GUILLOTINE` (default) | ~65% | Fast | Uniform items, speed-critical |
+| `ALGO_MAXRECTS` | ~100% | Slower | Diverse items, best fit |
+
 ## How It Works
 
-1. **Sort** items by volume descending (largest-first heuristic).
-2. **Generate** candidate box dimensions from item dimension permutations.
-3. **Test** each candidate with a greedy 3D bin packing algorithm that supports all six axis-aligned rotations.
+1. **Sort** items by multiple heuristics (volume, dimensions, footprint).
+2. **Generate** candidate box dimensions from item dimension permutations and sums.
+3. **Test** each candidate with a packing algorithm that supports all six axis-aligned rotations.
 4. **Return** the smallest box that successfully fits all items.
+
+## Examples
+
+See the [examples/](examples/) directory for runnable scripts:
+
+- [basic_usage.php](examples/basic_usage.php) — Simple item creation and box finding
+- [fluent_api.php](examples/fluent_api.php) — Add/remove/clear fluent API
+- [algorithm_comparison.php](examples/algorithm_comparison.php) — Guillotine vs MaxRects comparison
 
 ## Documentation
 
