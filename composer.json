@@ -1,6 +1,6 @@
 {
     "name": "daika7ana/smallest-box",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Calculate the smallest rectangular box (W x L x H) that fits a set of rectangular items, using axis-aligned 3D bin packing with rotation support.",
     "type": "library",
     "license": "GPL-3.0-or-later",

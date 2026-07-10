@@ -70,7 +70,9 @@ class GuillotinePacker extends AbstractPacker
      * Split a free-space region after placing an item.
      *
      * Creates three guillotine slabs (right, front, top) relative to the
-     * placed item's position and dimensions.
+     * placed item's position and dimensions.  Incrementally prunes new
+     * slabs against existing spaces instead of running full O(n²)
+     * subsumption over all spaces.
      *
      * @param int $index Index of the space being consumed
      * @param float $iw Placed item width
@@ -89,25 +91,89 @@ class GuillotinePacker extends AbstractPacker
         $sl = $space[4];
         $sh = $space[5];
 
+        // Build the up-to-3 new guillotine slabs
+        $newSlabs = [];
+
         // Right slab: remaining width along x-axis
         $rw = $sw - $iw;
         if ($rw > self::EPSILON) {
-            $this->insertSpace($sx + $iw, $sy, $sz, $rw, $sl, $sh);
+            $newSlabs[] = [$sx + $iw, $sy, $sz, $rw, $sl, $sh];
         }
 
         // Front slab: remaining length along y-axis (only the width consumed by item)
         $fl = $sl - $il;
         if ($fl > self::EPSILON) {
-            $this->insertSpace($sx, $sy + $il, $sz, $iw, $fl, $sh);
+            $newSlabs[] = [$sx, $sy + $il, $sz, $iw, $fl, $sh];
         }
 
         // Top slab: remaining height along z-axis (only the width+length consumed)
         $th = $sh - $ih;
         if ($th > self::EPSILON) {
-            $this->insertSpace($sx, $sy, $sz + $ih, $iw, $il, $th);
+            $newSlabs[] = [$sx, $sy, $sz + $ih, $iw, $il, $th];
         }
 
-        $this->pruneSubsumedSpaces();
+        // Incremental pruning: compare new slabs only against existing spaces.
+        // Use direct array indexing and volume pre-filter for speed.
+        $removeIndices = [];
+        $survivors = [];
+
+        foreach ($newSlabs as $newSlab) {
+            $nx  = $newSlab[0];
+            $ny  = $newSlab[1];
+            $nz  = $newSlab[2];
+            $nw  = $newSlab[3];
+            $nl  = $newSlab[4];
+            $nh  = $newSlab[5];
+            $nMaxX = $nx + $nw;
+            $nMaxY = $ny + $nl;
+            $nMaxZ = $nz + $nh;
+            $nVol = $nw * $nl * $nh;
+
+            $subsumed = false;
+            foreach ($this->spaces as $ei => $e) {
+                $eVol = $e[3] * $e[4] * $e[5];
+
+                if ($eVol >= $nVol
+                    && $e[0] <= $nx && $e[1] <= $ny && $e[2] <= $nz
+                    && $e[0] + $e[3] >= $nMaxX
+                    && $e[1] + $e[4] >= $nMaxY
+                    && $e[2] + $e[5] >= $nMaxZ
+                ) {
+                    $subsumed = true;
+                    break;
+                }
+
+                if ($nVol >= $eVol
+                    && $nMaxX >= $e[0] + $e[3]
+                    && $nMaxY >= $e[1] + $e[4]
+                    && $nMaxZ >= $e[2] + $e[5]
+                    && $nx <= $e[0] && $ny <= $e[1] && $nz <= $e[2]
+                ) {
+                    $removeIndices[$ei] = true;
+                }
+            }
+
+            if (!$subsumed) {
+                $survivors[] = $newSlab;
+            }
+        }
+
+        // Remove existing spaces that were subsumed by a surviving new slab
+        if (!empty($removeIndices)) {
+            $keep = [];
+            foreach ($this->spaces as $ei => $existing) {
+                if (!isset($removeIndices[$ei])) {
+                    $keep[] = $existing;
+                }
+            }
+            $this->spaces = $keep;
+        }
+
+        // Insert surviving new slabs in sort order
+        foreach ($survivors as $slab) {
+            $this->insertSpace($slab[0], $slab[1], $slab[2], $slab[3], $slab[4], $slab[5]);
+        }
+
         $this->mergeAdjacentSpaces();
     }
 }

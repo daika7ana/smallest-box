@@ -96,6 +96,32 @@ abstract class AbstractPacker implements PackingStrategy
     }
 
     /**
+     * Check if space $container entirely contains space $contained.
+     *
+     * Uses a volume pre-filter to skip the full 6-condition check when
+     * the potential container has a smaller volume than the contained.
+     *
+     * @param array{0: float, 1: float, 2: float, 3: float, 4: float, 5: float} $container
+     * @param array{0: float, 1: float, 2: float, 3: float, 4: float, 5: float} $contained
+     */
+    protected function containsSpace(array $container, array $contained): bool
+    {
+        // Volume pre-filter: container must have >= volume to possibly contain
+        $volContainer = $container[3] * $container[4] * $container[5];
+        $volContained = $contained[3] * $contained[4] * $contained[5];
+        if ($volContainer < $volContained) {
+            return false;
+        }
+
+        return $container[0] <= $contained[0]
+            && $container[1] <= $contained[1]
+            && $container[2] <= $contained[2]
+            && $container[0] + $container[3] >= $contained[0] + $contained[3]
+            && $container[1] + $container[4] >= $contained[1] + $contained[4]
+            && $container[2] + $container[5] >= $contained[2] + $contained[5];
+    }
+
+    /**
      * Remove spaces that are fully contained within another space.
      */
     protected function pruneSubsumedSpaces(): void
@@ -117,18 +143,9 @@ abstract class AbstractPacker implements PackingStrategy
                 }
                 $b = $this->spaces[$j];
 
-                // Check if $a contains $b
-                if ($a[0] <= $b[0] && $a[1] <= $b[1] && $a[2] <= $b[2]
-                    && $a[0] + $a[3] >= $b[0] + $b[3]
-                    && $a[1] + $a[4] >= $b[1] + $b[4]
-                    && $a[2] + $a[5] >= $b[2] + $b[5]
-                ) {
+                if ($this->containsSpace($a, $b)) {
                     $subsumed[$j] = true;
-                } elseif ($b[0] <= $a[0] && $b[1] <= $a[1] && $b[2] <= $a[2]
-                    && $b[0] + $b[3] >= $a[0] + $a[3]
-                    && $b[1] + $b[4] >= $a[1] + $a[4]
-                    && $b[2] + $b[5] >= $a[2] + $a[5]
-                ) {
+                } elseif ($this->containsSpace($b, $a)) {
                     $subsumed[$i] = true;
                     break;
                 }
@@ -149,71 +166,78 @@ abstract class AbstractPacker implements PackingStrategy
     /**
      * Merge adjacent spaces that share a face and have matching cross-sections.
      *
-     * Single-pass O(n²) approach: for each space, try to merge with all
-     * subsequent spaces along X, Y, or Z axes.
+     * Multi-pass approach: repeat until a full pass finds no merges.
+     * This recovers larger cuboids that single-pass merging can miss when
+     * a merged result is itself adjacent to another space.
      */
     protected function mergeAdjacentSpaces(): void
     {
-        $count = count($this->spaces);
-        if ($count < 2) {
-            return;
-        }
-
-        $used = [];
-        $merged = [];
-
-        for ($i = 0; $i < $count; $i++) {
-            if (isset($used[$i])) {
-                continue;
-            }
-            $current = $this->spaces[$i];
-
-            for ($j = $i + 1; $j < $count; $j++) {
-                if (isset($used[$j])) {
-                    continue;
-                }
-                $other = $this->spaces[$j];
-
-                // Merge along X axis: same y, z, l, h and adjacent in x
-                if (abs($current[1] - $other[1]) < self::EPSILON
-                    && abs($current[2] - $other[2]) < self::EPSILON
-                    && abs($current[4] - $other[4]) < self::EPSILON
-                    && abs($current[5] - $other[5]) < self::EPSILON
-                    && abs(($current[0] + $current[3]) - $other[0]) < self::EPSILON
-                ) {
-                    $current = [$current[0], $current[1], $current[2], $current[3] + $other[3], $current[4], $current[5]];
-                    $used[$j] = true;
-                    continue;
-                }
-
-                // Merge along Y axis: same x, z, w, h and adjacent in y
-                if (abs($current[0] - $other[0]) < self::EPSILON
-                    && abs($current[2] - $other[2]) < self::EPSILON
-                    && abs($current[3] - $other[3]) < self::EPSILON
-                    && abs($current[5] - $other[5]) < self::EPSILON
-                    && abs(($current[1] + $current[4]) - $other[1]) < self::EPSILON
-                ) {
-                    $current = [$current[0], $current[1], $current[2], $current[3], $current[4] + $other[4], $current[5]];
-                    $used[$j] = true;
-                    continue;
-                }
-
-                // Merge along Z axis: same x, y, w, l and adjacent in z
-                if (abs($current[0] - $other[0]) < self::EPSILON
-                    && abs($current[1] - $other[1]) < self::EPSILON
-                    && abs($current[3] - $other[3]) < self::EPSILON
-                    && abs($current[4] - $other[4]) < self::EPSILON
-                    && abs(($current[2] + $current[5]) - $other[2]) < self::EPSILON
-                ) {
-                    $current = [$current[0], $current[1], $current[2], $current[3], $current[4], $current[5] + $other[5]];
-                    $used[$j] = true;
-                    continue;
-                }
+        do {
+            $anyMerged = false;
+            $count = count($this->spaces);
+            if ($count < 2) {
+                return;
             }
 
-            $merged[] = $current;
-        }
+            $used = [];
+            $merged = [];
 
-        $this->spaces = $merged;
+            for ($i = 0; $i < $count; $i++) {
+                if (isset($used[$i])) {
+                    continue;
+                }
+                $current = $this->spaces[$i];
+
+                for ($j = $i + 1; $j < $count; $j++) {
+                    if (isset($used[$j])) {
+                        continue;
+                    }
+                    $other = $this->spaces[$j];
+
+                    // Merge along X axis: same y, z, l, h and adjacent in x
+                    if (abs($current[1] - $other[1]) < self::EPSILON
+                        && abs($current[2] - $other[2]) < self::EPSILON
+                        && abs($current[4] - $other[4]) < self::EPSILON
+                        && abs($current[5] - $other[5]) < self::EPSILON
+                        && abs(($current[0] + $current[3]) - $other[0]) < self::EPSILON
+                    ) {
+                        $current = [$current[0], $current[1], $current[2], $current[3] + $other[3], $current[4], $current[5]];
+                        $used[$j] = true;
+                        $anyMerged = true;
+                        continue;
+                    }
+
+                    // Merge along Y axis: same x, z, w, h and adjacent in y
+                    if (abs($current[0] - $other[0]) < self::EPSILON
+                        && abs($current[2] - $other[2]) < self::EPSILON
+                        && abs($current[3] - $other[3]) < self::EPSILON
+                        && abs($current[5] - $other[5]) < self::EPSILON
+                        && abs(($current[1] + $current[4]) - $other[1]) < self::EPSILON
+                    ) {
+                        $current = [$current[0], $current[1], $current[2], $current[3], $current[4] + $other[4], $current[5]];
+                        $used[$j] = true;
+                        $anyMerged = true;
+                        continue;
+                    }
+
+                    // Merge along Z axis: same x, y, w, l and adjacent in z
+                    if (abs($current[0] - $other[0]) < self::EPSILON
+                        && abs($current[1] - $other[1]) < self::EPSILON
+                        && abs($current[3] - $other[3]) < self::EPSILON
+                        && abs($current[4] - $other[4]) < self::EPSILON
+                        && abs(($current[2] + $current[5]) - $other[2]) < self::EPSILON
+                    ) {
+                        $current = [$current[0], $current[1], $current[2], $current[3], $current[4], $current[5] + $other[5]];
+                        $used[$j] = true;
+                        $anyMerged = true;
+                        continue;
+                    }
+                }
+
+                $merged[] = $current;
+            }
+
+            $this->spaces = $merged;
+        } while ($anyMerged);
     }
 }

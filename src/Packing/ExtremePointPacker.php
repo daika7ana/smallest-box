@@ -96,6 +96,20 @@ class ExtremePointPacker implements PackingStrategy
             // Place the item
             $this->placed[] = [$px, $py, $pz, $rw, $rl, $rh];
 
+            // Prune existing extreme points that now fall inside the newly
+            // placed item. Uses the same half-open interval "inside" test
+            // used for candidate validation. This must happen before new
+            // candidates are generated so dead points do not incorrectly
+            // suppress valid new points during deduplication.
+            $this->points = array_values(array_filter(
+                $this->points,
+                fn(array $p) => !(
+                    $p[0] >= $px - self::EPSILON && $p[0] < $px + $rw - self::EPSILON
+                    && $p[1] >= $py - self::EPSILON && $p[1] < $py + $rl - self::EPSILON
+                    && $p[2] >= $pz - self::EPSILON && $p[2] < $pz + $rh - self::EPSILON
+                ),
+            ));
+
             // Generate and incrementally validate 3 new extreme points
             // from the placed item's faces (right, front, top)
             $candidates = [
