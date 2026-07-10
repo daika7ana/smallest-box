@@ -165,6 +165,9 @@ class SmallestBoxFinder
         return $this;
     }
 
+    /** @var array<string, array<int, array{0: float, 1: float, 2: float, 3: float}>>|null */
+    private static ?array $candidateCache = null;
+
     /**
      * Find the smallest box that fits the items.
      *
@@ -216,15 +219,34 @@ class SmallestBoxFinder
             $sortOrders[] = $custom;
         }
 
+        // Pre-sort items for each sort order once rather than re-sorting for every candidate,
+        // and also apply each pack order to avoid re-sorting inside canPack.
+        $packOrders = self::getBasePackOrders();
+        foreach ($this->customPackOrders as $custom) {
+            $packOrders[] = $custom;
+        }
+
+        $sortedItemsByOrder = [];
+        foreach ($sortOrders as $i => $sortFn) {
+            $sortedItems = $items;
+            usort($sortedItems, $sortFn);
+
+            $sortedItemsByOrder[$i] = [];
+            foreach ($packOrders as $j => $packFn) {
+                $packItems = $sortedItems;
+                if ($packFn !== null) {
+                    usort($packItems, $packFn);
+                }
+                $sortedItemsByOrder[$i][$j] = $packItems;
+            }
+        }
+
         $bestBox = null;
 
         foreach ($candidates as $candidate) {
             // Try each sort order
-            foreach ($sortOrders as $sortFn) {
-                $sortedItems = $items;
-                usort($sortedItems, $sortFn);
-
-                if ($this->canPack($sortedItems, $candidate[0], $candidate[1], $candidate[2])) {
+            foreach ($sortOrders as $i => $sortFn) {
+                if ($this->canPack($sortedItemsByOrder[$i], $candidate[0], $candidate[1], $candidate[2])) {
                     $bestBox = new Box($candidate[0], $candidate[1], $candidate[2]);
                     break 2; // Found a match, break both loops
                 }
@@ -251,6 +273,11 @@ class SmallestBoxFinder
      */
     private function generateCandidates(array $items, float $totalVolume): array
     {
+        $cacheKey = $this->candidateCacheKey($items);
+        if (isset(self::$candidateCache[$cacheKey])) {
+            return self::$candidateCache[$cacheKey];
+        }
+
         // Compute per-axis lower bounds for early pruning
         $minDims = [];
         foreach ($items as $item) {
@@ -364,7 +391,25 @@ class SmallestBoxFinder
             }
         }
 
+        self::$candidateCache[$cacheKey] = $candidates;
+
         return $candidates;
+    }
+
+    /**
+     * Build a cache key from the multiset of item dimensions.
+     *
+     * @param Item[] $items
+     */
+    private function candidateCacheKey(array $items): string
+    {
+        $parts = [];
+        foreach ($items as $item) {
+            $parts[] = round($item->width(), 4) . 'x' . round($item->length(), 4) . 'x' . round($item->height(), 4);
+        }
+        sort($parts);
+
+        return md5(implode('|', $parts));
     }
 
     /**
@@ -412,39 +457,24 @@ class SmallestBoxFinder
     }
 
     /**
-     * @param Item[] $items
+     * @param Item[][] $itemSets Pre-sorted item sequences for each pack order
      */
-    private function canPack(array $items, float $boxW, float $boxL, float $boxH): bool
+    private function canPack(array $itemSets, float $boxW, float $boxL, float $boxH): bool
     {
-        // Quick feasibility check: verify each item fits in at least one rotation
-        foreach ($items as $item) {
-            $fits = false;
-            foreach ($item->rotations() as $rot) {
-                if ($rot[0] <= $boxW && $rot[1] <= $boxL && $rot[2] <= $boxH) {
-                    $fits = true;
-                    break;
-                }
-            }
-            if (!$fits) {
+        // Quick feasibility check using sorted dimensions: an item fits in a box
+        // iff each sorted item dimension is <= the corresponding sorted box dimension.
+        $boxDims = [$boxW, $boxL, $boxH];
+        sort($boxDims);
+
+        foreach ($itemSets[0] as $item) {
+            $dims = $item->sortedDimensions();
+            if ($dims[0] > $boxDims[0] || $dims[1] > $boxDims[1] || $dims[2] > $boxDims[2]) {
                 return false;
             }
         }
 
-        // Try different item orderings inside the packer
-        // Keep a focused set: caller already provides a good ordering
-        $packOrders = self::getBasePackOrders();
-
-        // Append user-defined pack orders
-        foreach ($this->customPackOrders as $custom) {
-            $packOrders[] = $custom;
-        }
-
-        foreach ($packOrders as $sortFn) {
-            $attemptItems = $items;
-            if ($sortFn !== null) {
-                usort($attemptItems, $sortFn);
-            }
-
+        // Try each pre-sorted item sequence inside the packer
+        foreach ($itemSets as $attemptItems) {
             $placement = $this->createPacker($boxW, $boxL, $boxH);
             $placed = true;
 
